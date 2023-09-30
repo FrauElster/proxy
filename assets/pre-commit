@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+
+import os
+import subprocess
+import sys
+import re
+
+def update_readme_badges(coverage_percentage):
+    readme_path = os.path.join(repo_root, "README.md")
+    
+    # Get the last modified date of README.md using git log
+    os.chdir(repo_root)
+    last_updated_date = subprocess.check_output('date -r README.md +"%Y.%m.%d"', shell=True).decode('utf-8').strip()
+
+    with open(readme_path, 'r') as file:
+        readme_content = file.read()
+
+    # Update Code Coverage badge
+    coverage_badge = f"![Code Coverage](https://img.shields.io/badge/coverage-{coverage_percentage}%25-brightgreen)"
+    readme_content = re.sub(r"!\[Code Coverage\]\(https://img.shields.io/badge/coverage-\d+?%25-brightgreen\)", coverage_badge, readme_content)
+
+    # Update Last Updated badge
+    updated_badge = f"![Last Updated](https://img.shields.io/badge/updated-{last_updated_date}-brightgreen)"
+    readme_content = re.sub(r"!\[Last Updated\]\(https://img.shields.io/badge/updated-(yesterday|today|\d{4}.\d{2}.\d{2}|)-brightgreen\)", updated_badge, readme_content)
+
+    # Write the changes back to README.md
+    with open(readme_path, 'w') as file:
+        file.write(readme_content)
+
+    subprocess.run(["git", "add", readme_path])
+
+def main():
+    global repo_root
+    repo_root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"]).decode('utf-8').strip()
+
+    os.chdir(repo_root)
+    # Run tests
+    cmd = "go test ./... -p 1 -coverprofile cover.out"
+    try:
+        completed_process = subprocess.run(
+            cmd,            
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        if completed_process.returncode != 0:
+            print("\nPre-commit hook failed: tests failed.\n")
+            print(completed_process.stdout)
+            print(completed_process.stderr)
+            sys.exit(1)
+    except subprocess.CalledProcessError:
+        print("\nPre-commit hook failed: tests failed.")
+        if os.path.exists("cover.out"):
+            os.remove("cover.out")
+        sys.exit(1)
+
+    # Get coverage
+    cmd = "go tool cover -func cover.out | grep total | awk '{print substr($3, 1, length($3)-1)}' && rm cover.out"
+    try:
+        raw_coverage_output = subprocess.check_output(cmd,shell=True,stderr=subprocess.PIPE,text=True)
+        coverage_output = raw_coverage_output.strip()
+        coverage_percentage = int(float(coverage_output))
+        update_readme_badges(coverage_percentage)
+    except subprocess.CalledProcessError:
+        print("\nPre-commit hook failed: coverage could not be obtained." )
+        sys.exit(1)
+    except ValueError as e:
+        print("\nPre-commit hook failed: coverage could not be obtained: " + e)
+        sys.exit(1)
+    finally:
+        if os.path.exists("cover.out"):
+            os.remove("cover.out")
+
+
+if __name__ == "__main__":
+    main()
