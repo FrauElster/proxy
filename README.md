@@ -4,7 +4,7 @@
   <img src="assets/logo.png" alt="Project Logo" width="800">
 </p>
 
-[![Code Coverage](https://img.shields.io/badge/coverage-58%25-brightgreen)](#)
+[![Code Coverage](https://img.shields.io/badge/coverage-59%25-brightgreen)](#)
 [![Last Updated](https://img.shields.io/badge/updated-2023.10.02-brightgreen)](#)
 
 This project provides a proxy server that can proxy multiple websites with a custom http.Transport.
@@ -40,8 +40,7 @@ func main() {
   )
 
   // define website to forward to
-  googleUrl, _ := = url.Parse("https://www.google.com")
-  targets := []proxy.Target({BaseUrl: *googleUrl, Prefix:  "/google/"})
+  targets := []proxy.Target({BaseUrl: "https://www.google.com", Prefix:  "/google/"})
 
   // build proxy
   addr, _ := url.Parse("http://0.0.0.0:8080")

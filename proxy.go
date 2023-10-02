@@ -16,7 +16,7 @@ import (
 )
 
 type Target struct {
-	BaseUrl url.URL
+	BaseUrl string
 	Prefix  string
 }
 
@@ -60,6 +60,11 @@ func NewProxy(targets []Target, opts ...ProxyOption) (*proxy, error) {
 			target.Prefix = "/" + target.Prefix
 		}
 		targetMap[target.Prefix] = target
+
+		_, err := url.Parse(target.BaseUrl)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing target URL %s: %w", target.BaseUrl, err)
+		}
 	}
 
 	p := &proxy{
@@ -224,10 +229,10 @@ func (p *proxy) copyBody(resp *http.Response, target Target) ([]byte, error) {
 		for _, attr := range []string{"href", "src"} {
 			if val, exists := element.Attr(attr); exists {
 				isDynamic := strings.HasPrefix(val, "/")
-				isOnOriginalHost := strings.HasPrefix(val, target.BaseUrl.String())
+				isOnOriginalHost := strings.HasPrefix(val, target.BaseUrl)
 
 				url := p.addr
-				url.Path = joinUrl(target.Prefix, strings.TrimPrefix(val, target.BaseUrl.String()))
+				url.Path = joinUrl(target.Prefix, strings.TrimPrefix(val, target.BaseUrl))
 				if isDynamic || isOnOriginalHost {
 					element.SetAttr(attr, url.String())
 				}
@@ -246,9 +251,13 @@ func (p *proxy) copyBody(resp *http.Response, target Target) ([]byte, error) {
 
 func buildRequest(originalReq *http.Request, target Target) (*http.Request, error) {
 	// Create a new URL from the base URL of the target server and the path from the original request
+	targetAsUrl, err := url.Parse(target.BaseUrl)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing target URL")
+	}
 	newURL := *originalReq.URL
-	newURL.Scheme = target.BaseUrl.Scheme
-	newURL.Host = target.BaseUrl.Host
+	newURL.Scheme = targetAsUrl.Scheme
+	newURL.Host = targetAsUrl.Host
 	newURL.Path = strings.TrimPrefix(newURL.Path, target.Prefix)
 
 	// Create a new request with the original method, the new URL, and the original body

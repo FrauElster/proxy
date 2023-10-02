@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -85,8 +84,7 @@ func stopServer(t *testing.T, proxy *proxy) {
 	}
 }
 
-var _githubUrl, _ = url.Parse("https://github.com")
 var GithubTarget = Target{
-	BaseUrl: *_githubUrl,
+	BaseUrl: "https://github.com",
 	Prefix:  "/github/",
 }
