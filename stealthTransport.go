@@ -11,26 +11,38 @@ import (
 )
 
 type stealthTransport struct {
-	Transport  http.RoundTripper
+	// Transport is the underlying transport used by the stealth transport
+	Transport http.RoundTripper
+	// userAgents is a list of user agents used by the stealth transport
+	// if the list is empty, the stealth transport will not set a user agent
 	userAgents []string
 
+	// minDelay and maxDelay are the minimum and maximum delay between requests
+	// the actual delay will be a random value between min and max
+	// if minDelay or maxDelay are 0, the stealth transport will not delay requests
 	minDelay    time.Duration
 	maxDelay    time.Duration
 	lastRequest time.Time
 
+	// socks5Proxy is the SOCKS5 proxy used by the stealth transport
+	// if socks5Proxy is empty, the stealth transport will not use a SOCKS5 proxy
 	socks5Proxy       string
 	socksAuth         *goProxy.Auth
 	socks5Initialized bool
 
+	// compression is true if the stealth transport will compress requests and decompress responses
+	// if the request is already compressed, the stealth transport will not compress it again, and will not decompress the response
 	compression bool
 }
 
 type StealthOption func(*stealthTransport)
 
+// WithCompression enables compression for the stealth transport
 var WithCompression = func(s *stealthTransport) {
 	s.compression = true
 }
 
+// WithSocks5 sets the SOCKS5 proxy used by the stealth transport
 func WithSocks5(proxyAddr string, auth *goProxy.Auth) StealthOption {
 	return func(s *stealthTransport) {
 		s.socks5Proxy = proxyAddr
@@ -38,12 +50,16 @@ func WithSocks5(proxyAddr string, auth *goProxy.Auth) StealthOption {
 	}
 }
 
+// WithUserAgents the stealth transport will randomly choose one of the given user agents
+// the most common user agents can be found in CommonUserAgents
 func WithUserAgents(agents ...string) StealthOption {
 	return func(s *stealthTransport) {
 		s.userAgents = agents
 	}
 }
 
+// WithDelay sets the minimum and maximum delay between requests
+// the actual delay will be a random value between min and max
 func WithDelay(min, max time.Duration) StealthOption {
 	return func(s *stealthTransport) {
 		s.minDelay = min
@@ -65,6 +81,7 @@ func NewStealthTransport(opts ...StealthOption) *stealthTransport {
 	return t
 }
 
+// RoundTrip implements the http.RoundTripper interface
 func (t *stealthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// set a random user agent if one is not already set
 	if len(t.userAgents) > 0 {

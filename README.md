@@ -5,7 +5,7 @@
 </p>
 
 [![Code Coverage](https://img.shields.io/badge/coverage-58%25-brightgreen)](#)
-[![Last Updated](https://img.shields.io/badge/updated-2023.09.30-brightgreen)](#)
+[![Last Updated](https://img.shields.io/badge/updated-2023.10.02-brightgreen)](#)
 
 This project provides a proxy server that can proxy multiple websites with a custom http.Transport.
 
@@ -25,13 +25,17 @@ Lets say you want to `GET www.google.com/search?q=hello+world`, you would setup 
 _How to use?_
 
 ```go
+import (
+  goproxy "golang.org/x/net/proxy"
+)
+
 func main() {
   // build a custom transport, this can be any http.RoundTripper,
   socksAddr := os.Getenv("SOCKS5_PROXY")
 	user := os.Getenv("SOCKS5_USER")
 	pass := os.Getenv("SOCKS5_PASS")
 	transport := proxy.NewStealthTransport(
-    proxy.WithSocks5(socksAddr, &goProxy.Auth{User: user, Password: pass}), 
+    proxy.WithSocks5(socksAddr, &goproxy.Auth{User: user, Password: pass}), 
     proxy.WithUserAgents(proxy.CommonUserAgents...)
   )
 

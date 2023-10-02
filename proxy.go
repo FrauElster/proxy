@@ -22,18 +22,22 @@ type Target struct {
 
 type ProxyOption func(*proxy)
 
+// WithSsl enables SSL for the proxy server
+// ListenAndServe will use http.ListenAndServeTLS instead of http.ListenAndServe
 func WithSsl(cert tls.Certificate) ProxyOption {
 	return func(p *proxy) {
 		p.cert = &cert
 	}
 }
 
+// WithTransport sets the transport used by the proxy server
 func WithTransport(transport http.RoundTripper) ProxyOption {
 	return func(p *proxy) {
 		p.transport = transport
 	}
 }
 
+// WithAddr sets the address used by the proxy server
 func WithAddr(addr *url.URL) ProxyOption {
 	return func(p *proxy) {
 		p.addr = addr
@@ -74,6 +78,9 @@ func NewProxy(targets []Target, opts ...ProxyOption) (*proxy, error) {
 	return p, nil
 }
 
+// ListenAndServe starts the proxy server
+// It blocks until the server is shut down
+// If the proxy server was started with WithSsl, it will use http.ListenAndServeTLS instead of http.ListenAndServe
 func (p *proxy) ListenAndServe() (err error) {
 	// start listener (so we can get the actual port, even if it was chosen by the OS)
 	listener, err := net.Listen("tcp", p.addr.Host)
