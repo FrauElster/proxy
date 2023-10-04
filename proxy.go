@@ -12,69 +12,71 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/FrauElster/proxy/internal"
 	"github.com/PuerkitoBio/goquery"
 )
 
 type Target struct {
 	BaseUrl string
 	Prefix  string
+	// PreRequest can be used to manipulate the http.Request
+	PreRequest func(*http.Request) *http.Request
+	// PostRequest can be used to manipulate the http.Response
+	// if the request failed, *http.Response will be nil and the returned value will be ignored
+	PostRequest func(*http.Response) *http.Response
 }
 
-type ProxyOption func(*proxy)
+type ProxyOption func(*Proxy)
 
 // WithSsl enables SSL for the proxy server
 // ListenAndServe will use http.ListenAndServeTLS instead of http.ListenAndServe
 func WithSsl(cert tls.Certificate) ProxyOption {
-	return func(p *proxy) {
-		p.cert = &cert
-	}
+	return func(p *Proxy) { p.cert = &cert }
 }
 
 // WithTransport sets the transport used by the proxy server
 func WithTransport(transport http.RoundTripper) ProxyOption {
-	return func(p *proxy) {
-		p.transport = transport
-	}
+	return func(p *Proxy) { p.transport = transport }
 }
 
-// WithAddr sets the address used by the proxy server
-func WithAddr(addr *url.URL) ProxyOption {
-	return func(p *proxy) {
-		p.addr = addr
-	}
+func WithPort(port int) ProxyOption {
+	return func(p *Proxy) { p.port = port }
 }
 
-type proxy struct {
+type Proxy struct {
 	targets   map[string]Target
 	transport http.RoundTripper
 	server    *http.Server
-	addr      *url.URL
+	port      int
 
+	addr *url.URL
 	cert *tls.Certificate
 }
 
-func NewProxy(targets []Target, opts ...ProxyOption) (*proxy, error) {
+func NewProxy(targets []Target, opts ...ProxyOption) (*Proxy, error) {
 	targetMap := make(map[string]Target)
-	for _, target := range targets {
+	for i, target := range targets {
 		if !strings.HasPrefix(target.Prefix, "/") {
 			target.Prefix = "/" + target.Prefix
 		}
-		targetMap[target.Prefix] = target
 
 		_, err := url.Parse(target.BaseUrl)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing target URL %s: %w", target.BaseUrl, err)
 		}
+
+		targetMap[target.Prefix] = targets[i]
 	}
 
-	p := &proxy{
-		addr:      &url.URL{Scheme: "http", Host: "0.0.0.0:0"},
+	p := &Proxy{
 		targets:   targetMap,
 		transport: http.DefaultTransport,
 	}
 	for _, opt := range opts {
 		opt(p)
 	}
+
+	p.addr = &url.URL{Scheme: "http", Host: fmt.Sprintf("0.0.0.0:%d", p.port)}
 
 	if p.cert != nil {
 		p.addr.Scheme = "https"
@@ -86,7 +88,7 @@ func NewProxy(targets []Target, opts ...ProxyOption) (*proxy, error) {
 // ListenAndServe starts the proxy server
 // It blocks until the server is shut down
 // If the proxy server was started with WithSsl, it will use http.ListenAndServeTLS instead of http.ListenAndServe
-func (p *proxy) ListenAndServe() (err error) {
+func (p *Proxy) ListenAndServe() (err error) {
 	// start listener (so we can get the actual port, even if it was chosen by the OS)
 	listener, err := net.Listen("tcp", p.addr.Host)
 	if err != nil {
@@ -98,7 +100,8 @@ func (p *proxy) ListenAndServe() (err error) {
 	// build server
 	mux := http.NewServeMux()
 	for path, target := range p.targets {
-		mux.HandleFunc(path, p.forwardRequest(target))
+		target := target
+		mux.HandleFunc(path, p.forwardRequest(&target))
 	}
 	p.server = &http.Server{
 		Addr:    p.addr.Host,
@@ -115,17 +118,17 @@ func (p *proxy) ListenAndServe() (err error) {
 	return p.server.ServeTLS(listener, "", "")
 }
 
-func (p *proxy) Shutdown(ctx context.Context) error {
+func (p *Proxy) Shutdown(ctx context.Context) error {
 	return p.server.Shutdown(ctx)
 }
 
-func (p *proxy) Addr() string {
+func (p *Proxy) Addr() string {
 	return p.addr.String()
 }
 
-func (p *proxy) forwardRequest(target Target) http.HandlerFunc {
+func (p *Proxy) forwardRequest(target *Target) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		newReq, err := buildRequest(r, target)
+		newReq, err := buildRequest(r, *target)
 		if err != nil {
 			slog.Warn("Error constructing new request", "err", err)
 			http.Error(w, "Error constructing new request", http.StatusBadGateway)
@@ -133,10 +136,16 @@ func (p *proxy) forwardRequest(target Target) http.HandlerFunc {
 		}
 
 		// Send the new request
+		if target.PreRequest != nil {
+			newReq = target.PreRequest(newReq)
+		}
 		client := &http.Client{Transport: p.transport}
 		resp, err := client.Do(newReq)
+		if target.PostRequest != nil {
+			resp = target.PostRequest(resp)
+		}
 		if err != nil {
-			slog.Warn("Error forwarding request", "err", err, "status", resp.StatusCode)
+			slog.Warn("Error forwarding request", "err", err)
 			http.Error(w, "Error forwarding request", http.StatusBadGateway)
 			return
 		}
@@ -152,7 +161,7 @@ func (p *proxy) forwardRequest(target Target) http.HandlerFunc {
 			return
 		}
 
-		err = p.copyResponse(resp, w, target)
+		err = p.copyResponse(resp, w, *target)
 		if err != nil {
 			slog.Warn("Error copying response", "err", err)
 			http.Error(w, "Error copying response", http.StatusBadGateway)
@@ -161,14 +170,14 @@ func (p *proxy) forwardRequest(target Target) http.HandlerFunc {
 	}
 }
 
-func (p *proxy) copyResponse(resp *http.Response, w http.ResponseWriter, target Target) error {
+func (p *Proxy) copyResponse(resp *http.Response, w http.ResponseWriter, target Target) error {
 	// Copy the headers from the target server to the original response writer
 	copyHeaders(resp, w)
 
 	// we have to decompress the response before we can copy the body
 	encoding := resp.Header.Get("Content-Encoding")
 	if encoding != "" {
-		err := decompressResponse(resp)
+		err := internal.DecompressResponse(resp)
 		if err != nil {
 			return fmt.Errorf("error decompressing response body: %w", err)
 		}
@@ -183,7 +192,7 @@ func (p *proxy) copyResponse(resp *http.Response, w http.ResponseWriter, target 
 
 	// compress the response again
 	if encoding != "" {
-		newBody, err = compressBody(newBody, SupportedCompression(encoding))
+		newBody, err = internal.CompressBody(newBody, internal.SupportedCompression(encoding))
 		if err != nil {
 			return fmt.Errorf("error compressing response body: %w", err)
 		}
@@ -208,7 +217,7 @@ func copyHeaders(resp *http.Response, w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 }
 
-func (p *proxy) copyBody(resp *http.Response, target Target) ([]byte, error) {
+func (p *Proxy) copyBody(resp *http.Response, target Target) ([]byte, error) {
 	// if not HTML just copy the body
 	if !strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
 		return io.ReadAll(resp.Body)
@@ -232,7 +241,7 @@ func (p *proxy) copyBody(resp *http.Response, target Target) ([]byte, error) {
 				isOnOriginalHost := strings.HasPrefix(val, target.BaseUrl)
 
 				url := p.addr
-				url.Path = joinUrl(target.Prefix, strings.TrimPrefix(val, target.BaseUrl))
+				url.Path = internal.JoinUrl(target.Prefix, strings.TrimPrefix(val, target.BaseUrl))
 				if isDynamic || isOnOriginalHost {
 					element.SetAttr(attr, url.String())
 				}
@@ -279,17 +288,4 @@ func buildRequest(originalReq *http.Request, target Target) (*http.Request, erro
 
 	newReq.Close = true
 	return newReq, nil
-}
-
-func joinUrl(elements ...string) string {
-	for idx, element := range elements {
-		if idx > 0 {
-			element = strings.TrimPrefix(element, "/")
-		}
-		if idx < len(elements)-1 {
-			element = strings.TrimSuffix(element, "/")
-		}
-		elements[idx] = element
-	}
-	return strings.Join(elements, "/")
 }

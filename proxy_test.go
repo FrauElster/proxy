@@ -1,17 +1,30 @@
-package proxy
+package proxy_test
 
 import (
 	"context"
 	"io"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"testing"
 
+	goProxy "golang.org/x/net/proxy"
+
+	"github.com/FrauElster/proxy"
+	"github.com/FrauElster/proxy/internal"
+	"github.com/FrauElster/proxy/stats"
+	"github.com/FrauElster/proxy/stealth"
+	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/require"
 )
 
+var GithubTarget = proxy.Target{BaseUrl: "https://github.com", Prefix: "/github/"}
+var WikipediaTarget = proxy.Target{BaseUrl: "https://wikipedia.org", Prefix: "/wikipedia/"}
+
 func TestProxy(t *testing.T) {
 	t.Run("Check if the response body is the same", func(t *testing.T) {
-		proxy, err := NewProxy([]Target{GithubTarget})
+		proxy, err := proxy.NewProxy([]proxy.Target{GithubTarget})
 		require.NoError(t, err)
 		startProxy(t, proxy)
 		defer stopServer(t, proxy)
@@ -19,7 +32,7 @@ func TestProxy(t *testing.T) {
 		originalUrl := "https://github.com/FrauElster"
 		originalBody := getBody(t, originalUrl)
 
-		proxyUrl := joinUrl(proxy.Addr(), GithubTarget.Prefix, "FrauElster")
+		proxyUrl := internal.JoinUrl(proxy.Addr(), GithubTarget.Prefix, "FrauElster")
 		proxyBody := getBody(t, proxyUrl)
 
 		// due to rewritten URLs the body is not the same
@@ -27,7 +40,7 @@ func TestProxy(t *testing.T) {
 	})
 
 	t.Run("check with SOCKS5 proxy", func(t *testing.T) {
-		proxy, err := NewProxy([]Target{GithubTarget}, WithTransport(mustSocksTransport(t)))
+		proxy, err := proxy.NewProxy([]proxy.Target{GithubTarget}, proxy.WithTransport(mustSocksTransport(t)))
 		require.NoError(t, err)
 		startProxy(t, proxy)
 		defer stopServer(t, proxy)
@@ -35,7 +48,7 @@ func TestProxy(t *testing.T) {
 		originalUrl := "https://github.com/FrauElster"
 		originalBody := getBody(t, originalUrl)
 
-		proxyUrl := joinUrl(proxy.Addr(), GithubTarget.Prefix, "FrauElster")
+		proxyUrl := internal.JoinUrl(proxy.Addr(), GithubTarget.Prefix, "FrauElster")
 		proxyBody := getBody(t, proxyUrl)
 
 		// due to rewritten URLs the body is not the same
@@ -68,7 +81,7 @@ func getBody(t *testing.T, url string) string {
 	return string(body)
 }
 
-func startProxy(t *testing.T, proxy *proxy) {
+func startProxy(t *testing.T, proxy *proxy.Proxy) {
 	go func() {
 		err := proxy.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
@@ -77,14 +90,45 @@ func startProxy(t *testing.T, proxy *proxy) {
 	}()
 }
 
-func stopServer(t *testing.T, proxy *proxy) {
+func stopServer(t *testing.T, proxy *proxy.Proxy) {
 	err := proxy.Shutdown(context.Background())
 	if err != nil {
 		t.Error(err)
 	}
 }
 
-var GithubTarget = Target{
-	BaseUrl: "https://github.com",
-	Prefix:  "/github/",
+func mustSocksTransport(t *testing.T) *stealth.StealthTransport {
+	err := godotenv.Load()
+	require.NoError(t, err)
+
+	socksAddr := os.Getenv("SOCKS5_PROXY")
+	user := os.Getenv("SOCKS5_USER")
+	pass := os.Getenv("SOCKS5_PASS")
+	transport := stealth.NewStealthTransport(stealth.WithSocks5(socksAddr, &goProxy.Auth{
+		User:     user,
+		Password: pass,
+	}))
+	return transport
+}
+
+func XTestRun(t *testing.T) {
+	stats := stats.NewStatServer()
+	stats.RegisterTarget(GithubTarget)
+	stats.RegisterTarget(WikipediaTarget)
+
+	proxy, err := proxy.NewProxy([]proxy.Target{GithubTarget, WikipediaTarget}, proxy.WithTransport(mustSocksTransport(t)), proxy.WithPort(8080))
+	require.NoError(t, err)
+
+	go func() {
+		err := stats.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			panic(err)
+		}
+	}()
+
+	startProxy(t, proxy)
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	<-sigChan
 }

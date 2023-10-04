@@ -1,4 +1,4 @@
-package proxy
+package internal
 
 import (
 	"bytes"
@@ -33,7 +33,7 @@ func compressionFromString(encoding string) SupportedCompression {
 	return ""
 }
 
-func decompressResponse(res *http.Response) (err error) {
+func DecompressResponse(res *http.Response) (err error) {
 	if res.Header.Get("Content-Encoding") == "" {
 		return nil
 	}
@@ -74,7 +74,7 @@ func decompressResponse(res *http.Response) (err error) {
 	return nil
 }
 
-func compressBody(body []byte, encoding SupportedCompression) ([]byte, error) {
+func CompressBody(body []byte, encoding SupportedCompression) ([]byte, error) {
 	var writer io.WriteCloser
 	var compressedBodyBuffer bytes.Buffer
 	switch encoding {

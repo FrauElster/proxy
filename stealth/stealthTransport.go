@@ -1,4 +1,4 @@
-package proxy
+package stealth
 
 import (
 	"fmt"
@@ -7,10 +7,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/FrauElster/proxy/internal"
 	goProxy "golang.org/x/net/proxy"
 )
 
-type stealthTransport struct {
+type StealthTransport struct {
 	// Transport is the underlying transport used by the stealth transport
 	Transport http.RoundTripper
 	// userAgents is a list of user agents used by the stealth transport
@@ -35,16 +36,16 @@ type stealthTransport struct {
 	compression bool
 }
 
-type StealthOption func(*stealthTransport)
+type StealthOption func(*StealthTransport)
 
 // WithCompression enables compression for the stealth transport
-var WithCompression = func(s *stealthTransport) {
+var WithCompression = func(s *StealthTransport) {
 	s.compression = true
 }
 
 // WithSocks5 sets the SOCKS5 proxy used by the stealth transport
 func WithSocks5(proxyAddr string, auth *goProxy.Auth) StealthOption {
-	return func(s *stealthTransport) {
+	return func(s *StealthTransport) {
 		s.socks5Proxy = proxyAddr
 		s.socksAuth = auth
 	}
@@ -53,7 +54,7 @@ func WithSocks5(proxyAddr string, auth *goProxy.Auth) StealthOption {
 // WithUserAgents the stealth transport will randomly choose one of the given user agents
 // the most common user agents can be found in CommonUserAgents
 func WithUserAgents(agents ...string) StealthOption {
-	return func(s *stealthTransport) {
+	return func(s *StealthTransport) {
 		s.userAgents = agents
 	}
 }
@@ -61,14 +62,14 @@ func WithUserAgents(agents ...string) StealthOption {
 // WithDelay sets the minimum and maximum delay between requests
 // the actual delay will be a random value between min and max
 func WithDelay(min, max time.Duration) StealthOption {
-	return func(s *stealthTransport) {
+	return func(s *StealthTransport) {
 		s.minDelay = min
 		s.maxDelay = max
 	}
 }
 
-func NewStealthTransport(opts ...StealthOption) *stealthTransport {
-	t := &stealthTransport{
+func NewStealthTransport(opts ...StealthOption) *StealthTransport {
+	t := &StealthTransport{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 		},
@@ -82,7 +83,7 @@ func NewStealthTransport(opts ...StealthOption) *stealthTransport {
 }
 
 // RoundTrip implements the http.RoundTripper interface
-func (t *stealthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (t *StealthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// set a random user agent if one is not already set
 	if len(t.userAgents) > 0 {
 		randomUserAgent := t.userAgents[rand.Intn(len(t.userAgents))]
@@ -134,7 +135,7 @@ func (t *stealthTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	// decompress
 	if t.compression && !hadCompression && res.Header.Get("Content-Encoding") != "" {
 		slog.Info("decompressing")
-		err := decompressResponse(res)
+		err := internal.DecompressResponse(res)
 		if err != nil {
 			return nil, err
 		}

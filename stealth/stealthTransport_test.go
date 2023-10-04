@@ -1,4 +1,4 @@
-package proxy
+package stealth
 
 import (
 	"context"
@@ -101,8 +101,8 @@ func TestStealthClient(t *testing.T) {
 	})
 }
 
-func mustSocksTransport(t *testing.T) *stealthTransport {
-	err := godotenv.Load()
+func mustSocksTransport(t *testing.T) *StealthTransport {
+	err := godotenv.Load("../.env")
 	require.NoError(t, err)
 
 	socksAddr := os.Getenv("SOCKS5_PROXY")
