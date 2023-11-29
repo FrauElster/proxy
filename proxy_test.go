@@ -24,7 +24,9 @@ var WikipediaTarget = proxy.Target{BaseUrl: "https://wikipedia.org", Prefix: "/w
 
 func TestProxy(t *testing.T) {
 	t.Run("Check if the response body is the same", func(t *testing.T) {
-		proxy, err := proxy.NewProxy([]proxy.Target{GithubTarget})
+		proxy, err := proxy.NewProxy()
+		require.NoError(t, err)
+		err = proxy.AddTarget(GithubTarget)
 		require.NoError(t, err)
 		startProxy(t, proxy)
 		defer stopServer(t, proxy)
@@ -40,7 +42,9 @@ func TestProxy(t *testing.T) {
 	})
 
 	t.Run("check with SOCKS5 proxy", func(t *testing.T) {
-		proxy, err := proxy.NewProxy([]proxy.Target{GithubTarget}, proxy.WithTransport(mustSocksTransport(t)))
+		proxy, err := proxy.NewProxy(proxy.WithTransport(mustSocksTransport(t)))
+		require.NoError(t, err)
+		err = proxy.AddTarget(GithubTarget)
 		require.NoError(t, err)
 		startProxy(t, proxy)
 		defer stopServer(t, proxy)
@@ -116,7 +120,11 @@ func XTestRun(t *testing.T) {
 	stats.RegisterTarget(GithubTarget)
 	stats.RegisterTarget(WikipediaTarget)
 
-	proxy, err := proxy.NewProxy([]proxy.Target{GithubTarget, WikipediaTarget}, proxy.WithTransport(mustSocksTransport(t)), proxy.WithPort(8080))
+	proxy, err := proxy.NewProxy(proxy.WithTransport(mustSocksTransport(t)), proxy.WithPort(8080))
+	require.NoError(t, err)
+	err = proxy.AddTarget(GithubTarget)
+	require.NoError(t, err)
+	err = proxy.AddTarget(WikipediaTarget)
 	require.NoError(t, err)
 
 	go func() {

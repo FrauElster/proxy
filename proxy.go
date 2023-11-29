@@ -53,23 +53,9 @@ type Proxy struct {
 	cert *tls.Certificate
 }
 
-func NewProxy(targets []Target, opts ...ProxyOption) (*Proxy, error) {
-	targetMap := make(map[string]Target)
-	for i, target := range targets {
-		if !strings.HasPrefix(target.Prefix, "/") {
-			target.Prefix = "/" + target.Prefix
-		}
-
-		_, err := url.Parse(target.BaseUrl)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing target URL %s: %w", target.BaseUrl, err)
-		}
-
-		targetMap[target.Prefix] = targets[i]
-	}
-
+func NewProxy(opts ...ProxyOption) (*Proxy, error) {
 	p := &Proxy{
-		targets:   targetMap,
+		targets:   make(map[string]Target),
 		transport: http.DefaultTransport,
 	}
 	for _, opt := range opts {
@@ -83,6 +69,20 @@ func NewProxy(targets []Target, opts ...ProxyOption) (*Proxy, error) {
 	}
 
 	return p, nil
+}
+
+func (p *Proxy) AddTarget(target Target) error {
+	if !strings.HasPrefix(target.Prefix, "/") {
+		target.Prefix = "/" + target.Prefix
+	}
+
+	_, err := url.Parse(target.BaseUrl)
+	if err != nil {
+		return err
+	}
+
+	p.targets[target.Prefix] = target
+	return nil
 }
 
 // ListenAndServe starts the proxy server

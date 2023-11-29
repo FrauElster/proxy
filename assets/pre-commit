@@ -21,7 +21,7 @@ def update_readme_badges(coverage_percentage):
 
     # Update Last Updated badge
     updated_badge = f"![Last Updated](https://img.shields.io/badge/updated-{last_updated_date}-brightgreen)"
-    readme_content = re.sub(r"!\[Last Updated\]\(https://img.shields.io/badge/updated-(yesterday|today|\d{4}.\d{2}.\d{2}|)-brightgreen\)", updated_badge, readme_content)
+    readme_content = re.sub(r"!\[Last Updated\]\(https://img.shields.io/badge/updated-(yesterday|today|\d{4}.\d{2}.\d{2})-brightgreen\)", updated_badge, readme_content)
 
     # Write the changes back to README.md
     with open(readme_path, 'w') as file:
