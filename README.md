@@ -5,7 +5,7 @@
 </p>
 
 [![Code Coverage](https://img.shields.io/badge/coverage-58%25-brightgreen)](#)
-[![Last Updated](https://img.shields.io/badge/updated-2023.10.04-brightgreen)](#)
+[![Last Updated](https://img.shields.io/badge/updated-2023.11.29-brightgreen)](#)
 
 This project provides a proxy server that can proxy multiple websites with a custom http.Transport.
 

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/FrauElster/proxy/internal"
@@ -12,6 +13,8 @@ import (
 )
 
 type StealthTransport struct {
+	mu sync.Mutex
+
 	// Transport is the underlying transport used by the stealth transport
 	Transport http.RoundTripper
 	// userAgents is a list of user agents used by the stealth transport
@@ -84,6 +87,9 @@ func NewStealthTransport(opts ...StealthOption) *StealthTransport {
 
 // RoundTrip implements the http.RoundTripper interface
 func (t *StealthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	// set a random user agent if one is not already set
 	if len(t.userAgents) > 0 {
 		randomUserAgent := t.userAgents[rand.Intn(len(t.userAgents))]
